@@ -333,7 +333,7 @@ class _ChatViewState extends State<ChatView> {
                     onChanged: (role) {
                       if (role != null) appState.setSelectedSenderRole(role);
                     },
-                    items: AppRole.values.map((r) {
+                    items: AppRole.coreRoles.map((r) {
                       return DropdownMenuItem(
                         value: r,
                         child: Row(
@@ -365,7 +365,7 @@ class _ChatViewState extends State<ChatView> {
                   onChanged: (role) {
                     if (role != null) appState.setSelectedReceiverRole(role);
                   },
-                  items: AppRole.values.where((r) => r != senderRole).map((r) {
+                  items: AppRole.coreRoles.where((r) => r != senderRole).map((r) {
                     return DropdownMenuItem(
                       value: r,
                       child: Row(

@@ -343,20 +343,44 @@ class ConnectedDevicesBar extends StatelessWidget {
                         ),
                       ),
                     ],
+
+                    // Release Turn Button
+                    if (currentRole != AppRole.espera) ...[
+                      const SizedBox(width: 8),
+                      Tooltip(
+                        message: currentRole == AppRole.admin
+                            ? 'Cerrar sesión de Administrador (Desconecta y cierra la sesión a todos)'
+                            : 'Liberar este rol y desocupar el turno para otro dispositivo',
+                        child: OutlinedButton.icon(
+                          onPressed: () => appState.releaseMyRole(),
+                          icon: const Icon(Icons.logout_rounded, size: 14, color: Color(0xFFF87171)),
+                          label: Text(
+                            currentRole == AppRole.admin ? 'Desconectar Admin (Cierra a Todos)' : 'Liberar Mi Turno',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFFCA5A5)),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: const Color(0xFFEF4444).withOpacity(0.1),
+                            side: BorderSide(color: const Color(0xFFEF4444).withOpacity(0.5)),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
 
               const SizedBox(height: 10),
 
-              // Device Status and Message Counters Strip
+              // Device Status and Message Counters Strip (Turn 1: Admin, Turn 2: Soporte, Turn 3: Usuario 1, Turn 4: Usuario 2)
               Wrap(
                 spacing: 8,
                 runSpacing: 6,
-                children: AppRole.values.map((role) {
+                children: AppRole.coreRoles.map((role) {
                   final isCurrent = currentRole == role;
                   final isOnline = appState.isDeviceOnline(role);
                   final msgCount = counters[role] ?? 0;
+                  final statusDesc = isOnline ? 'OCUPADO' : 'VACANTE';
 
                   return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -389,6 +413,22 @@ class ConnectedDevicesBar extends StatelessWidget {
                             fontSize: 11,
                             fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
                             color: isCurrent ? Colors.white : const Color(0xFF94A3B8),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: isOnline ? const Color(0xFF064E3B) : const Color(0xFF450A0A),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            statusDesc,
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: isOnline ? const Color(0xFF34D399) : const Color(0xFFFCA5A5),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 6),

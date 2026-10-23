@@ -84,7 +84,7 @@ class PreassignedUrlsDialog extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            ...AppRole.values.map((role) {
+            ...AppRole.coreRoles.map((role) {
               final isCurrent = appState.currentRole == role;
               final fullUrl = '$portNotice/#${role.routePath}';
 

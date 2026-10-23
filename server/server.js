@@ -38,12 +38,15 @@ const upload = multer({ storage });
 // --- SHARED IN-MEMORY & PERSISTENT DATA STORE ---
 const DATA_FILE = path.join(__dirname, 'render_store.json');
 
+// Ordered roles for dynamic assignment (1st: Admin, 2nd: Soporte, 3rd: Usuario 1, 4th: Usuario 2)
+const ROLE_ORDER = ['admin', 'agente', 'usuario1', 'usuario2'];
+
 let store = {
   devices: {
-    admin: { name: 'Dispositivo 1 - Administrador', isOnline: true },
-    agente: { name: 'Dispositivo 2 - Agente de Atención', isOnline: true },
-    usuario1: { name: 'Dispositivo 3 - Usuario 1 (Sistemas)', isOnline: true },
-    usuario2: { name: 'Dispositivo 4 - Usuario 2 (Finanzas)', isOnline: true },
+    admin: { name: 'Dispositivo 1 - Administrador', isOnline: false, assignedClientId: null, assignedAt: null },
+    agente: { name: 'Dispositivo 2 - Soporte / Agente de Atención', isOnline: false, assignedClientId: null, assignedAt: null },
+    usuario1: { name: 'Dispositivo 3 - Usuario 1 (Sistemas)', isOnline: false, assignedClientId: null, assignedAt: null },
+    usuario2: { name: 'Dispositivo 4 - Usuario 2 (Finanzas)', isOnline: false, assignedClientId: null, assignedAt: null },
   },
   messages: [
     {
@@ -131,6 +134,43 @@ let store = {
   ],
 };
 
+// Turn-based role assignment helper
+function assignNextAvailableRole(clientId, preferredRole = null) {
+  // If this client already holds an active role, keep it
+  for (const roleKey of ROLE_ORDER) {
+    if (store.devices[roleKey].assignedClientId === clientId && store.devices[roleKey].isOnline) {
+      return roleKey;
+    }
+  }
+
+  // If a preferredRole was explicitly requested and is vacant, assign it
+  if (preferredRole && ROLE_ORDER.includes(preferredRole)) {
+    if (!store.devices[preferredRole].isOnline || !store.devices[preferredRole].assignedClientId) {
+      store.devices[preferredRole].isOnline = true;
+      store.devices[preferredRole].assignedClientId = clientId;
+      store.devices[preferredRole].assignedAt = new Date().toISOString();
+      return preferredRole;
+    }
+  }
+
+  // Otherwise, assign in order of turns:
+  // Turn 1 -> Admin
+  // Turn 2 -> Agente de Soporte
+  // Turn 3 -> Usuario 1
+  // Turn 4 -> Usuario 2
+  for (const roleKey of ROLE_ORDER) {
+    if (!store.devices[roleKey].isOnline || !store.devices[roleKey].assignedClientId) {
+      store.devices[roleKey].isOnline = true;
+      store.devices[roleKey].assignedClientId = clientId;
+      store.devices[roleKey].assignedAt = new Date().toISOString();
+      return roleKey;
+    }
+  }
+
+  // All 4 roles occupied: waiting queue
+  return 'espera';
+}
+
 // Persistence helper
 function saveStoreToDisk() {
   try {
@@ -165,6 +205,8 @@ function broadcast(eventType, payload) {
 
 // --- WEBSOCKET CONNECTION HANDLING ---
 wss.on('connection', (ws, req) => {
+  ws.clientId = null;
+  ws.role = null;
   console.log(`[WS] Nuevo cliente conectado desde ${req.socket.remoteAddress}`);
 
   // Send initial full sync state
@@ -183,11 +225,97 @@ wss.on('connection', (ws, req) => {
       const parsed = JSON.parse(message);
       console.log(`[WS Evento recibido]: ${parsed.type}`);
 
-      if (parsed.type === 'register_device') {
+      // Dynamic turn-based role assignment
+      if (parsed.type === 'request_role') {
+        const clientId = parsed.clientId || uuidv4();
+        const preferredRole = parsed.preferredRole || null;
+
+        const assignedRole = assignNextAvailableRole(clientId, preferredRole);
+        ws.role = assignedRole;
+        ws.clientId = clientId;
+
+        console.log(`[Turno Asignado]: Cliente ${clientId} -> Rol: ${assignedRole}`);
+
+        ws.send(JSON.stringify({
+          type: 'role_assigned',
+          payload: {
+            role: assignedRole,
+            roleName: store.devices[assignedRole] ? store.devices[assignedRole].name : 'En espera de turno',
+            clientId: clientId,
+            devices: store.devices,
+          },
+        }));
+
+        saveStoreToDisk();
+        broadcast('devices_state_updated', { devices: store.devices });
+        if (store.devices[assignedRole]) {
+          broadcast('device_presence_changed', { role: assignedRole, isOnline: true });
+        }
+      } else if (parsed.type === 'release_role') {
+        const role = ws.role;
+        const clientId = ws.clientId;
+        if (role && store.devices[role] && store.devices[role].assignedClientId === clientId) {
+          console.log(`[Turno Liberado]: Rol ${role} desocupado por cliente ${clientId}`);
+          store.devices[role].isOnline = false;
+          store.devices[role].assignedClientId = null;
+          store.devices[role].assignedAt = null;
+
+          if (role === 'admin') {
+            // Si el admin libera el rol, se cierran las sesiones a todos
+            for (const r of ROLE_ORDER) {
+              store.devices[r].isOnline = false;
+              store.devices[r].assignedClientId = null;
+              store.devices[r].assignedAt = null;
+            }
+            saveStoreToDisk();
+            wss.clients.forEach((c) => {
+              if (c !== ws && c.readyState === WebSocket.OPEN) {
+                c.role = null;
+              }
+            });
+            broadcast('admin_disconnected_session_terminated', {
+              reason: 'El Administrador ha cerrado su sesión. Todas las sesiones activas han sido cerradas.',
+              timestamp: new Date().toISOString(),
+              devices: store.devices,
+            });
+          } else if (role === 'agente') {
+            store.reports = store.reports.map((r) => {
+              if (r.assignedRole === 'agente' && r.status !== 'resuelto' && r.status !== 'cerrado') {
+                return {
+                  ...r,
+                  assignedRole: 'admin',
+                  status: 'escaladoAdmin',
+                  resolutionNotes: 'Escalado automáticamente al Admin por desocupación del Agente.',
+                  updatedAt: new Date().toISOString(),
+                };
+              }
+              return r;
+            });
+            broadcast('agent_status_changed', { isOnline: false, reports: store.reports });
+          }
+
+          ws.role = 'espera';
+          ws.send(JSON.stringify({
+            type: 'role_assigned',
+            payload: {
+              role: 'espera',
+              roleName: 'En espera de turno',
+              clientId: clientId,
+              devices: store.devices,
+            },
+          }));
+
+          saveStoreToDisk();
+          broadcast('devices_state_updated', { devices: store.devices });
+          broadcast('device_presence_changed', { role, isOnline: false });
+        }
+      } else if (parsed.type === 'register_device') {
         const { role } = parsed;
         if (store.devices[role]) {
           store.devices[role].isOnline = true;
+          ws.role = role;
           broadcast('device_presence_changed', { role, isOnline: true });
+          broadcast('devices_state_updated', { devices: store.devices });
         }
       } else if (parsed.type === 'send_message') {
         const msg = parsed.message;
@@ -198,7 +326,6 @@ wss.on('connection', (ws, req) => {
         const isOnline = parsed.isOnline;
         store.devices.agente.isOnline = isOnline;
         if (!isOnline) {
-          // Reassign open agent tickets to admin
           store.reports = store.reports.map((r) => {
             if (r.assignedRole === 'agente' && r.status !== 'resuelto' && r.status !== 'cerrado') {
               return {
@@ -214,6 +341,7 @@ wss.on('connection', (ws, req) => {
         }
         saveStoreToDisk();
         broadcast('agent_status_changed', { isOnline, reports: store.reports });
+        broadcast('devices_state_updated', { devices: store.devices });
       }
     } catch (e) {
       console.error('[WS Error procesando mensaje]:', e);
@@ -221,7 +349,92 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    console.log('[WS] Cliente desconectado.');
+    const role = ws.role;
+    const clientId = ws.clientId;
+    console.log(`[WS] Cliente desconectado. Rol: ${role}, ClientId: ${clientId}`);
+
+    if (!role) return;
+
+    // VALIDACIÓN FUNDAMENTAL: Cuando se desconecte el Administrador, se les cierra la sesión a todos!
+    if (role === 'admin') {
+      console.log('🚨 [ADMIN DESCONECTADO]: Cerrando la sesión a todos los dispositivos.');
+
+      // 1. Desocupar todos los roles
+      for (const r of ROLE_ORDER) {
+        store.devices[r].isOnline = false;
+        store.devices[r].assignedClientId = null;
+        store.devices[r].assignedAt = null;
+      }
+      saveStoreToDisk();
+
+      // 2. Limpiar rol en todos los demás sockets conectados
+      wss.clients.forEach((client) => {
+        if (client !== ws && client.readyState === WebSocket.OPEN) {
+          client.role = null;
+        }
+      });
+
+      // 3. Emitir evento de desconexión del admin y cierre forzoso de sesión
+      broadcast('admin_disconnected_session_terminated', {
+        reason: 'El Administrador se ha desconectado del servidor. Por políticas de seguridad, todas las sesiones activas han sido cerradas.',
+        timestamp: new Date().toISOString(),
+        devices: store.devices,
+      });
+
+      broadcast('devices_state_updated', { devices: store.devices });
+      return;
+    }
+
+    // Si se desconecta cualquier otro dispositivo (soporte/agente, usuario 1, usuario 2):
+    if (store.devices[role] && store.devices[role].assignedClientId === clientId) {
+      console.log(`[Turno desocupado]: Rol ${role} queda libre.`);
+      store.devices[role].isOnline = false;
+      store.devices[role].assignedClientId = null;
+      store.devices[role].assignedAt = null;
+
+      // Si era el agente, reasignar tickets pendientes al Administrador
+      if (role === 'agente') {
+        store.reports = store.reports.map((r) => {
+          if (r.assignedRole === 'agente' && r.status !== 'resuelto' && r.status !== 'cerrado') {
+            return {
+              ...r,
+              assignedRole: 'admin',
+              status: 'escaladoAdmin',
+              resolutionNotes: 'Escalado automáticamente al Admin por desconexión del Agente.',
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return r;
+        });
+        broadcast('agent_status_changed', { isOnline: false, reports: store.reports });
+      }
+
+      // Promover al siguiente cliente en espera si existe
+      let waitingClient = null;
+      wss.clients.forEach((client) => {
+        if (!waitingClient && client !== ws && client.role === 'espera' && client.readyState === WebSocket.OPEN) {
+          waitingClient = client;
+        }
+      });
+
+      if (waitingClient) {
+        const newRole = assignNextAvailableRole(waitingClient.clientId);
+        waitingClient.role = newRole;
+        waitingClient.send(JSON.stringify({
+          type: 'role_assigned',
+          payload: {
+            role: newRole,
+            roleName: store.devices[newRole] ? store.devices[newRole].name : '',
+            clientId: waitingClient.clientId,
+            devices: store.devices,
+          },
+        }));
+      }
+
+      saveStoreToDisk();
+      broadcast('device_presence_changed', { role, isOnline: false });
+      broadcast('devices_state_updated', { devices: store.devices });
+    }
   });
 });
 

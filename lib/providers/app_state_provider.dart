@@ -13,12 +13,22 @@ class AppStateProvider extends ChangeNotifier {
   bool _isOfflineSimulated = false; // For TC07 test
   String? _lastSystemAlert;
 
+  // Dynamic Turn Assignment & Admin Disconnect Validation
+  bool _isAdminDisconnectedSessionTerminated = false;
+  String? _terminationReason;
+  Map<String, dynamic> _serverDevices = {};
+  String? _assignedRoleName;
+
   AppRole get currentRole => _currentRole;
   AppRole get selectedSenderRole => _selectedSenderRole;
   AppRole get selectedReceiverRole => _selectedReceiverRole;
   bool get isAgentConnected => _isAgentConnected;
   bool get isOfflineSimulated => _isOfflineSimulated;
   String? get lastSystemAlert => _lastSystemAlert;
+  bool get isAdminDisconnectedSessionTerminated => _isAdminDisconnectedSessionTerminated;
+  String? get terminationReason => _terminationReason;
+  Map<String, dynamic> get serverDevices => _serverDevices;
+  String? get assignedRoleName => _assignedRoleName;
 
   AppStateProvider() {
     _init();
@@ -42,7 +52,50 @@ class AppStateProvider extends ChangeNotifier {
       final type = event['type'];
       final payload = event['payload'];
 
-      if (type == 'agent_status_changed' && payload != null) {
+      if (type == 'role_assigned' && payload != null) {
+        final assignedRoleCode = payload['role'] as String?;
+        if (assignedRoleCode != null) {
+          final role = AppRole.fromString(assignedRoleCode);
+          _currentRole = role;
+          _selectedSenderRole = role;
+          _assignedRoleName = payload['roleName'] as String?;
+          _isAdminDisconnectedSessionTerminated = false;
+          _terminationReason = null;
+
+          if (payload['devices'] != null) {
+            _serverDevices = Map<String, dynamic>.from(payload['devices'] as Map);
+          }
+
+          if (role == AppRole.admin) {
+            _selectedReceiverRole = AppRole.usuario1;
+          } else if (role == AppRole.agente) {
+            _selectedReceiverRole = AppRole.usuario1;
+          } else {
+            _selectedReceiverRole = _isAgentConnected ? AppRole.agente : AppRole.admin;
+          }
+
+          notifyListeners();
+        }
+      } else if (type == 'admin_disconnected_session_terminated') {
+        // VALIDACIÓN: Cuando el Admin se desconecta, se cierra la sesión a todos!
+        _isAdminDisconnectedSessionTerminated = true;
+        _terminationReason = payload?['reason'] as String? ??
+            'El Administrador se ha desconectado. Todas las sesiones activas han sido cerradas por política de seguridad.';
+        _currentRole = AppRole.espera;
+        _selectedSenderRole = AppRole.espera;
+
+        if (payload?['devices'] != null) {
+          _serverDevices = Map<String, dynamic>.from(payload!['devices'] as Map);
+        }
+
+        _lastSystemAlert = 'ALERTA: El Administrador se ha desconectado. Tu sesión ha sido cerrada automáticamente.';
+        notifyListeners();
+      } else if (type == 'devices_state_updated' && payload != null) {
+        if (payload['devices'] != null) {
+          _serverDevices = Map<String, dynamic>.from(payload['devices'] as Map);
+          notifyListeners();
+        }
+      } else if (type == 'agent_status_changed' && payload != null) {
         final isOnline = payload['isOnline'] as bool?;
         if (isOnline != null && isOnline != _isAgentConnected) {
           _isAgentConnected = isOnline;
@@ -53,12 +106,26 @@ class AppStateProvider extends ChangeNotifier {
     });
   }
 
+  void requestTurnOrRole([AppRole? preferredRole]) {
+    _isAdminDisconnectedSessionTerminated = false;
+    _terminationReason = null;
+    RenderService.requestRoleAssignment(preferredRole: preferredRole?.code);
+    notifyListeners();
+  }
+
+  void releaseMyRole() {
+    RenderService.releaseRole();
+    _currentRole = AppRole.espera;
+    _selectedSenderRole = AppRole.espera;
+    notifyListeners();
+  }
+
   void setRole(AppRole role) {
     _currentRole = role;
     _selectedSenderRole = role;
 
-    // Register active device on Render
-    RenderService.sendWsMessage('register_device', {'role': role.code});
+    // Request or register device on Render
+    RenderService.requestRoleAssignment(preferredRole: role.code);
 
     if (role == AppRole.admin) {
       _selectedReceiverRole = AppRole.usuario1;
@@ -116,6 +183,12 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   String getDeviceStatus(AppRole role) {
+    if (_serverDevices.containsKey(role.code)) {
+      final dev = _serverDevices[role.code];
+      final isOnline = dev['isOnline'] == true;
+      return isOnline ? 'En línea (Ocupado)' : 'Vacante (Disponible)';
+    }
+
     if (role == AppRole.agente) {
       return _isAgentConnected ? 'En línea' : 'Desconectado';
     }
@@ -123,6 +196,11 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   bool isDeviceOnline(AppRole role) {
+    if (_serverDevices.containsKey(role.code)) {
+      final dev = _serverDevices[role.code];
+      return dev['isOnline'] == true;
+    }
+
     if (role == AppRole.agente) {
       return _isAgentConnected;
     }

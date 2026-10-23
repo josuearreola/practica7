@@ -4,7 +4,8 @@ enum AppRole {
   admin,
   agente,
   usuario1,
-  usuario2;
+  usuario2,
+  espera;
 
   String get code {
     switch (this) {
@@ -16,6 +17,8 @@ enum AppRole {
         return 'usuario1';
       case AppRole.usuario2:
         return 'usuario2';
+      case AppRole.espera:
+        return 'espera';
     }
   }
 
@@ -24,11 +27,13 @@ enum AppRole {
       case AppRole.admin:
         return 'Administrador';
       case AppRole.agente:
-        return 'Agente de Atención';
+        return 'Agente de Atención / Soporte';
       case AppRole.usuario1:
         return 'Usuario 1 (Sistemas)';
       case AppRole.usuario2:
         return 'Usuario 2 (Finanzas)';
+      case AppRole.espera:
+        return 'En espera de turno';
     }
   }
 
@@ -37,11 +42,13 @@ enum AppRole {
       case AppRole.admin:
         return 'Dispositivo 1 - Administrador';
       case AppRole.agente:
-        return 'Dispositivo 2 - Agente de Atención';
+        return 'Dispositivo 2 - Soporte';
       case AppRole.usuario1:
         return 'Dispositivo 3 - Usuario 1';
       case AppRole.usuario2:
         return 'Dispositivo 4 - Usuario 2';
+      case AppRole.espera:
+        return 'Dispositivo en Espera';
     }
   }
 
@@ -50,24 +57,28 @@ enum AppRole {
       case AppRole.admin:
         return 'Disp. 1 (Admin)';
       case AppRole.agente:
-        return 'Disp. 2 (Agente)';
+        return 'Disp. 2 (Soporte)';
       case AppRole.usuario1:
         return 'Disp. 3 (Usuario 1)';
       case AppRole.usuario2:
         return 'Disp. 4 (Usuario 2)';
+      case AppRole.espera:
+        return 'En Espera';
     }
   }
 
   String get badgeLabel {
     switch (this) {
       case AppRole.admin:
-        return 'Administrador Central';
+        return 'Administrador Central (Turno 1)';
       case AppRole.agente:
-        return 'Mesa de Soporte';
+        return 'Mesa de Soporte (Turno 2)';
       case AppRole.usuario1:
-        return 'Solicitante IT';
+        return 'Solicitante IT (Turno 3)';
       case AppRole.usuario2:
-        return 'Solicitante Finanzas';
+        return 'Solicitante Finanzas (Turno 4)';
+      case AppRole.espera:
+        return 'Sala de Espera de Turno';
     }
   }
 
@@ -81,6 +92,8 @@ enum AppRole {
         return '/usuario1';
       case AppRole.usuario2:
         return '/usuario2';
+      case AppRole.espera:
+        return '/espera';
     }
   }
 
@@ -94,6 +107,8 @@ enum AppRole {
         return const Color(0xFF0EA5E9); // Sky
       case AppRole.usuario2:
         return const Color(0xFFF59E0B); // Amber
+      case AppRole.espera:
+        return const Color(0xFF94A3B8); // Slate
     }
   }
 
@@ -107,6 +122,8 @@ enum AppRole {
         return const Color(0xFF0C4A6E);
       case AppRole.usuario2:
         return const Color(0xFF78350F);
+      case AppRole.espera:
+        return const Color(0xFF1E293B);
     }
   }
 
@@ -120,16 +137,26 @@ enum AppRole {
         return Icons.person_rounded;
       case AppRole.usuario2:
         return Icons.account_circle_outlined;
+      case AppRole.espera:
+        return Icons.hourglass_top_rounded;
     }
   }
 
   bool get canAccessTestMatrix => this == AppRole.admin || this == AppRole.agente;
 
+  static List<AppRole> get coreRoles => [
+        AppRole.admin,
+        AppRole.agente,
+        AppRole.usuario1,
+        AppRole.usuario2,
+      ];
+
   static AppRole fromString(String? value) {
     if (value == null) return AppRole.admin;
     final clean = value.toLowerCase().replaceAll('/', '').replaceAll('#', '').trim();
+    if (clean.contains('espera') || clean.contains('wait')) return AppRole.espera;
     if (clean.contains('admin')) return AppRole.admin;
-    if (clean.contains('agente') || clean.contains('agent')) return AppRole.agente;
+    if (clean.contains('agente') || clean.contains('agent') || clean.contains('soporte')) return AppRole.agente;
     if (clean.contains('usuario1') || clean.contains('user1')) return AppRole.usuario1;
     if (clean.contains('usuario2') || clean.contains('user2')) return AppRole.usuario2;
     return AppRole.admin;

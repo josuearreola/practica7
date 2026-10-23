@@ -123,7 +123,7 @@ class ChatProvider extends ChangeNotifier {
 
   Map<AppRole, int> get allDeviceCounters {
     final map = <AppRole, int>{};
-    for (final role in AppRole.values) {
+    for (final role in AppRole.coreRoles) {
       map[role] = getMessageCountFor(role);
     }
     return map;

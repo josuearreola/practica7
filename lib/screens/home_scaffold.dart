@@ -28,7 +28,7 @@ class _HomeScaffoldState extends State<HomeScaffold> with SingleTickerProviderSt
       if (widget.initialRole != null) {
         context.read<AppStateProvider>().setRole(widget.initialRole!);
       } else {
-        // Detect role from URL hash or query if on Web
+        // Detect role from URL hash or query if on Web, or request dynamic turn
         final uri = Uri.base;
         final hashOrFragment = uri.fragment;
         final queryRole = uri.queryParameters['role'] ?? uri.queryParameters['device'];
@@ -39,6 +39,9 @@ class _HomeScaffoldState extends State<HomeScaffold> with SingleTickerProviderSt
         } else if (queryRole != null) {
           final detected = AppRole.fromString(queryRole);
           context.read<AppStateProvider>().setRole(detected);
+        } else {
+          // Automatic dynamic turn request (1st: Admin, 2nd: Soporte, 3rd: Usuario 1, 4th: Usuario 2)
+          context.read<AppStateProvider>().requestTurnOrRole();
         }
       }
     });
@@ -54,6 +57,180 @@ class _HomeScaffoldState extends State<HomeScaffold> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     final appState = context.watch<AppStateProvider>();
     final currentRole = appState.currentRole;
+
+    // VALIDACIÓN CRÍTICA: Desconexión del Administrador -> Cierre de Sesión General
+    if (appState.isAdminDisconnectedSessionTerminated) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0B0F19),
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 540),
+              padding: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                color: const Color(0xFF131B2E),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.6), width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFEF4444).withOpacity(0.2),
+                    blurRadius: 36,
+                    spreadRadius: 6,
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444).withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.no_accounts_rounded,
+                      size: 64,
+                      color: Color(0xFFEF4444),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'SESIÓN CERRADA A TODOS',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'Validación: El Administrador se ha desconectado',
+                      style: TextStyle(
+                        color: Color(0xFFFCA5A5),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    appState.terminationReason ??
+                        'Por validación de seguridad de la práctica, cuando el Administrador se desconecta se desocupan y cierran automáticamente las sesiones de todos los dispositivos (Soporte y Usuarios).',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF94A3B8),
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E293B),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF334155)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 20, color: Color(0xFF38BDF8)),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'El primer dispositivo en reconectarse tomará el rol de nuevo Administrador (Turno 1).',
+                            style: TextStyle(fontSize: 12, color: Color(0xFFE2E8F0)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6366F1),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 4,
+                      ),
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text(
+                        'Reconectar y Tomar Turno Disponible',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () {
+                        appState.requestTurnOrRole();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // PANTALLA: Dispositivo en Sala de Espera de Turno (si los 4 están llenos)
+    if (currentRole == AppRole.espera) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0B0F19),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF131B2E),
+          title: const Text('Sala de Espera de Turno - Práctica 7'),
+        ),
+        body: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 500),
+            margin: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFF475569)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.hourglass_top_rounded, size: 54, color: Color(0xFFF59E0B)),
+                const SizedBox(height: 16),
+                const Text(
+                  'En Espera de Turno Disponible',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Actualmente los 4 roles (Administrador, Soporte, Usuario 1 y Usuario 2) están ocupados por otros dispositivos físicos.\n\nEn cuanto uno de los dispositivos se desconecte, se te asignará su rol automáticamente.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8), height: 1.5),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0284C7)),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Comprobar Turnos Libres Ahora'),
+                  onPressed: () {
+                    appState.requestTurnOrRole();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFF0B0F19),
@@ -79,7 +256,7 @@ class _HomeScaffoldState extends State<HomeScaffold> with SingleTickerProviderSt
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Práctica 7: Mensajería, Archivos y Roles por URL',
+                    'Práctica 7: Asignación por Turnos y Mensajería',
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 16,
@@ -89,7 +266,7 @@ class _HomeScaffoldState extends State<HomeScaffold> with SingleTickerProviderSt
                     ),
                   ),
                   Text(
-                    'Sistema de Casos de Atención, Fallas y Mesa de Ayuda',
+                    'Turnos Automáticos: 1° Admin ➔ 2° Soporte ➔ 3° y 4° Usuarios',
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
                   ),
@@ -128,7 +305,7 @@ class _HomeScaffoldState extends State<HomeScaffold> with SingleTickerProviderSt
       ),
       body: Column(
         children: [
-          // 4 Connected Devices Banner & Status Bar
+          // 4 Connected Devices Banner & Status Bar with turn indicators
           const ConnectedDevicesBar(),
 
           // System Alerts Banner (Agent Disconnection / Offline Mode)

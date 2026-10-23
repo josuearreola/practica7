@@ -8,6 +8,8 @@ import '../models/chat_message.dart';
 import '../models/incident_report.dart';
 import '../models/test_case.dart';
 
+import 'package:uuid/uuid.dart';
+
 enum RenderConnectionState {
   connected,
   connecting,
@@ -16,11 +18,14 @@ enum RenderConnectionState {
 
 class RenderService {
   static const String _keyRenderUrl = 'practica7_render_server_url';
-  static String _serverUrl = 'http://localhost:3000';
+  static const String _keyClientId = 'practica7_client_device_id';
+  static String _serverUrl = 'https://practica7-9x0h.onrender.com';
+  static String _clientId = '';
 
   static WebSocketChannel? _channel;
   static RenderConnectionState _connectionState = RenderConnectionState.disconnected;
   static Timer? _reconnectTimer;
+  static Timer? _keepAliveTimer;
   static bool _isConnecting = false;
 
   static final StreamController<Map<String, dynamic>> _wsEventStream =
@@ -29,10 +34,18 @@ class RenderService {
   static Stream<Map<String, dynamic>> get events => _wsEventStream.stream;
   static RenderConnectionState get connectionState => _connectionState;
   static String get serverUrl => _serverUrl;
+  static String get clientId => _clientId;
 
-  static Future<void> init() async {
+  static Future<void> init([String? preferredRole]) async {
     final prefs = await SharedPreferences.getInstance();
     final savedUrl = prefs.getString(_keyRenderUrl);
+
+    var savedClientId = prefs.getString(_keyClientId);
+    if (savedClientId == null || savedClientId.isEmpty) {
+      savedClientId = const Uuid().v4();
+      await prefs.setString(_keyClientId, savedClientId);
+    }
+    _clientId = savedClientId;
 
     if (savedUrl != null && savedUrl.isNotEmpty) {
       _serverUrl = savedUrl;
@@ -44,7 +57,7 @@ class RenderService {
       }
     }
 
-    connectWebSocket();
+    connectWebSocket(preferredRole);
   }
 
   static Future<void> updateServerUrl(String newUrl) async {
@@ -56,7 +69,7 @@ class RenderService {
     connectWebSocket();
   }
 
-  static void connectWebSocket() {
+  static void connectWebSocket([String? preferredRole]) {
     if (_isConnecting) return;
     _isConnecting = true;
     _connectionState = RenderConnectionState.connecting;
@@ -71,9 +84,16 @@ class RenderService {
         (data) {
           _isConnecting = false;
           _connectionState = RenderConnectionState.connected;
+          _startKeepAlive();
+
           try {
             final Map<String, dynamic> parsed = jsonDecode(data as String);
             _wsEventStream.add(parsed);
+
+            // Once initial_state arrives, request our dynamic turn role if not yet assigned
+            if (parsed['type'] == 'initial_state') {
+              requestRoleAssignment(preferredRole: preferredRole);
+            }
           } catch (e) {
             debugPrint('[Render WS] Error decodificando evento: $e');
           }
@@ -93,9 +113,19 @@ class RenderService {
     }
   }
 
+  static void _startKeepAlive() {
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 25), (timer) {
+      if (_connectionState == RenderConnectionState.connected) {
+        sendWsMessage('ping', {'clientId': _clientId});
+      }
+    });
+  }
+
   static void _onDisconnect() {
     _isConnecting = false;
     _connectionState = RenderConnectionState.disconnected;
+    _keepAliveTimer?.cancel();
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(const Duration(seconds: 4), () {
       connectWebSocket();
@@ -105,6 +135,22 @@ class RenderService {
   static String _getWebSocketUrl() {
     final clean = _serverUrl.replaceAll('https://', 'wss://').replaceAll('http://', 'ws://');
     return '$clean/ws';
+  }
+
+  static void requestRoleAssignment({String? preferredRole}) {
+    final payload = <String, dynamic>{
+      'clientId': _clientId,
+    };
+    if (preferredRole != null) {
+      payload['preferredRole'] = preferredRole;
+    }
+    sendWsMessage('request_role', payload);
+  }
+
+  static void releaseRole() {
+    sendWsMessage('release_role', {
+      'clientId': _clientId,
+    });
   }
 
   static void sendWsMessage(String type, Map<String, dynamic> data) {
