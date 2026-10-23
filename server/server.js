@@ -465,18 +465,29 @@ app.post('/api/matrix/reset', (req, res) => {
 });
 
 // --- SERVE FLUTTER WEB BUNDLE ON RENDER ---
-// If the Flutter web build exists, serve it as static files so Render serves everything!
-const flutterWebDir = path.join(__dirname, '..', 'build', 'web');
-if (fs.existsSync(flutterWebDir)) {
-  console.log(`[Render] Sirviendo frontend Flutter Web desde ${flutterWebDir}`);
-  app.use(express.static(flutterWebDir));
+const publicDir = fs.existsSync(path.join(__dirname, 'public'))
+  ? path.join(__dirname, 'public')
+  : path.join(__dirname, '..', 'build', 'web');
+
+if (fs.existsSync(publicDir)) {
+  console.log(`[Render] Sirviendo frontend Flutter Web desde ${publicDir}`);
+  app.use(express.static(publicDir));
   app.get('*', (req, res) => {
-    res.sendFile(path.join(flutterWebDir, 'index.html'));
+    res.sendFile(path.join(publicDir, 'index.html'));
+  });
+} else {
+  app.get('/', (req, res) => {
+    res.json({
+      service: 'Practica 7 Backend Render',
+      status: 'online',
+      roles: ['/#/admin', '/#/agente', '/#/usuario1', '/#/usuario2'],
+      endpoints: ['/api/status', '/api/messages', '/api/reports', '/api/matrix'],
+    });
   });
 }
 
-// Start Server
-server.listen(PORT, () => {
+// Start Server on all interfaces (0.0.0.0) for Render compatibility
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`=======================================================`);
   console.log(`🚀 Practica 7 Backend iniciado en puerto ${PORT}`);
   console.log(`🌐 REST API: http://localhost:${PORT}/api/status`);
