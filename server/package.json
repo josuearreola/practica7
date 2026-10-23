@@ -1,0 +1,17 @@
+{
+  "name": "practica7-render-backend",
+  "version": "1.0.0",
+  "description": "Backend en tiempo real para Práctica 7 con WebSockets y REST API para Render.com",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "uuid": "^9.0.1",
+    "ws": "^8.17.0"
+  }
+}
