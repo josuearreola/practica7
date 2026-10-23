@@ -13,7 +13,11 @@ import 'theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SyncService.startPolling();
-  await RenderService.init();
+  try {
+    await RenderService.init();
+  } catch (e) {
+    debugPrint('[Main] Error al inicializar RenderService: $e');
+  }
   runApp(const Practica7App());
 }
 

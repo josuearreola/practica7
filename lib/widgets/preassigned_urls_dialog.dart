@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/app_role.dart';
 import '../providers/app_state_provider.dart';
+import '../services/render_service.dart';
 
 class PreassignedUrlsDialog extends StatelessWidget {
   final AppStateProvider appState;
@@ -10,8 +12,10 @@ class PreassignedUrlsDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentBaseUri = Uri.base.origin;
-    final portNotice = currentBaseUri.isEmpty ? 'http://localhost:3000' : currentBaseUri;
+    final currentBaseUri = kIsWeb && (Uri.base.scheme == 'http' || Uri.base.scheme == 'https')
+        ? Uri.base.origin
+        : RenderService.serverUrl;
+    final portNotice = currentBaseUri.isEmpty ? 'https://practica7-9x0h.onrender.com' : currentBaseUri;
 
     return Dialog(
       backgroundColor: const Color(0xFF131B2E),

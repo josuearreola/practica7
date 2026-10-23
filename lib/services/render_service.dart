@@ -49,11 +49,16 @@ class RenderService {
 
     if (savedUrl != null && savedUrl.isNotEmpty) {
       _serverUrl = savedUrl;
-    } else {
-      // Auto-detect if running on Web
-      final origin = Uri.base.origin;
-      if (origin.isNotEmpty && !origin.contains('file://')) {
-        _serverUrl = origin;
+    } else if (kIsWeb) {
+      try {
+        if (Uri.base.scheme == 'http' || Uri.base.scheme == 'https') {
+          final origin = Uri.base.origin;
+          if (origin.isNotEmpty) {
+            _serverUrl = origin;
+          }
+        }
+      } catch (e) {
+        debugPrint('[RenderService] Error detectando origen web: $e');
       }
     }
 

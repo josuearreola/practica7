@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/app_role.dart';
@@ -27,7 +28,7 @@ class _HomeScaffoldState extends State<HomeScaffold> with SingleTickerProviderSt
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.initialRole != null) {
         context.read<AppStateProvider>().setRole(widget.initialRole!);
-      } else {
+      } else if (kIsWeb) {
         // Detect role from URL hash or query if on Web, or request dynamic turn
         final uri = Uri.base;
         final hashOrFragment = uri.fragment;
@@ -40,9 +41,11 @@ class _HomeScaffoldState extends State<HomeScaffold> with SingleTickerProviderSt
           final detected = AppRole.fromString(queryRole);
           context.read<AppStateProvider>().setRole(detected);
         } else {
-          // Automatic dynamic turn request (1st: Admin, 2nd: Soporte, 3rd: Usuario 1, 4th: Usuario 2)
           context.read<AppStateProvider>().requestTurnOrRole();
         }
+      } else {
+        // Automatic dynamic turn request on mobile / desktop (1st: Admin, 2nd: Soporte, 3rd: Usuario 1, 4th: Usuario 2)
+        context.read<AppStateProvider>().requestTurnOrRole();
       }
     });
   }
