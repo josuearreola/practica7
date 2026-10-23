@@ -15,7 +15,7 @@ class PreassignedUrlsDialog extends StatelessWidget {
     final currentBaseUri = kIsWeb && (Uri.base.scheme == 'http' || Uri.base.scheme == 'https')
         ? Uri.base.origin
         : RenderService.serverUrl;
-    final portNotice = currentBaseUri.isEmpty ? 'https://practica7-9x0h.onrender.com' : currentBaseUri;
+    final portNotice = currentBaseUri.isEmpty ? 'https://practica7-9s0h.onrender.com' : currentBaseUri;
 
     return Dialog(
       backgroundColor: const Color(0xFF131B2E),

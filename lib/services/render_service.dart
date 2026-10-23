@@ -19,7 +19,7 @@ enum RenderConnectionState {
 class RenderService {
   static const String _keyRenderUrl = 'practica7_render_server_url';
   static const String _keyClientId = 'practica7_client_device_id';
-  static String _serverUrl = 'https://practica7-9x0h.onrender.com';
+  static String _serverUrl = 'https://practica7-9s0h.onrender.com';
   static String _clientId = '';
 
   static WebSocketChannel? _channel;
