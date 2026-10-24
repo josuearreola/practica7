@@ -27,7 +27,10 @@ class PersistenceService {
     }
     try {
       final List<dynamic> list = jsonDecode(raw);
-      return list.map((item) => IncidentReport.fromJson(item as Map<String, dynamic>)).toList();
+      return list
+          .map((item) => IncidentReport.fromJson(item as Map<String, dynamic>))
+          .where((r) => !['REP001', 'REP002', 'REP003', 'REP004'].contains(r.id))
+          .toList();
     } catch (e) {
       return [];
     }
@@ -48,7 +51,10 @@ class PersistenceService {
     }
     try {
       final List<dynamic> list = jsonDecode(raw);
-      return list.map((item) => ChatMessage.fromJson(item as Map<String, dynamic>)).toList();
+      return list
+          .map((item) => ChatMessage.fromJson(item as Map<String, dynamic>))
+          .where((m) => !['msg-001', 'msg-002', 'msg-003', 'msg-004'].contains(m.id))
+          .toList();
     } catch (e) {
       return [];
     }

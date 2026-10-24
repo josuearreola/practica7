@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/app_role.dart';
 import '../providers/app_state_provider.dart';
+import '../providers/incident_provider.dart';
 import '../widgets/connected_devices_bar.dart';
+import '../widgets/preassigned_urls_dialog.dart';
 import 'chat_view.dart';
 import 'test_matrix_view.dart';
 import 'tickets_view.dart';
@@ -17,13 +19,13 @@ class HomeScaffold extends StatefulWidget {
   State<HomeScaffold> createState() => _HomeScaffoldState();
 }
 
-class _HomeScaffoldState extends State<HomeScaffold> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _HomeScaffoldState extends State<HomeScaffold> {
+  // Mobile segment index: 0 = Chat, 1 = Tickets
+  int _mobileSelectedIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.initialRole != null) {
@@ -50,16 +52,67 @@ class _HomeScaffoldState extends State<HomeScaffold> with SingleTickerProviderSt
     });
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  void _openTestMatrixDialog(BuildContext context, AppRole currentRole) {
+    if (!currentRole.canAccessTestMatrix) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Acceso Restringido: La Matriz de Pruebas está disponible exclusivamente para Administrador y Agente de Soporte.',
+          ),
+          backgroundColor: Color(0xFF7F1D1D),
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF0B0F19),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: Color(0xFF334155)),
+        ),
+        child: Container(
+          width: 860,
+          height: 680,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.fact_check_rounded, color: Color(0xFF10B981), size: 24),
+                      SizedBox(width: 10),
+                      Text(
+                        'Matriz de Pruebas Automatizada (TC01-TC08)',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+              const Divider(color: Color(0xFF1E293B)),
+              const Expanded(child: TestMatrixView()),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppStateProvider>();
+    final incidentProvider = context.watch<IncidentProvider>();
     final currentRole = appState.currentRole;
+    final allReportsCount = incidentProvider.reports.length;
 
     // VALIDACIÓN CRÍTICA: Desconexión del Administrador -> Cierre de Sesión General
     if (appState.isAdminDisconnectedSessionTerminated) {
@@ -77,9 +130,9 @@ class _HomeScaffoldState extends State<HomeScaffold> with SingleTickerProviderSt
                 border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.6), width: 2),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFFEF4444).withOpacity(0.2),
-                    blurRadius: 36,
-                    spreadRadius: 6,
+                    color: const Color(0xFFEF4444).withOpacity(0.25),
+                    blurRadius: 40,
+                    spreadRadius: 8,
                   ),
                 ],
               ),
@@ -235,11 +288,13 @@ class _HomeScaffoldState extends State<HomeScaffold> with SingleTickerProviderSt
       );
     }
 
+    final isWideScreen = MediaQuery.of(context).size.width >= 960;
+
     return Scaffold(
       backgroundColor: const Color(0xFF0B0F19),
       appBar: AppBar(
         backgroundColor: const Color(0xFF131B2E),
-        elevation: 0,
+        elevation: 2,
         title: Row(
           children: [
             Container(
@@ -250,61 +305,65 @@ class _HomeScaffoldState extends State<HomeScaffold> with SingleTickerProviderSt
                 ),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.hub_rounded, color: Colors.white, size: 20),
+              child: const Icon(Icons.security_rounded, color: Colors.white, size: 20),
             ),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    'Práctica 7: Asignación por Turnos y Mensajería',
+                  const Text(
+                    'Mesa de Ayuda & Mensajería Multidispositivo',
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 15,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                       letterSpacing: -0.2,
                     ),
                   ),
                   Text(
-                    'Turnos Automáticos: 1° Admin ➔ 2° Soporte ➔ 3° y 4° Usuarios',
+                    'Práctica 7 • Turnos: 1° Admin ➔ 2° Soporte ➔ 3° y 4° Usuarios',
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
                   ),
                 ],
               ),
             ),
           ],
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: currentRole.primaryColor,
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: const Color(0xFF64748B),
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-          tabs: [
-            const Tab(
-              icon: Icon(Icons.forum_outlined, size: 18),
-              text: 'Mensajería y Archivos',
+        actions: [
+          // Preassigned URLs Button
+          Tooltip(
+            message: 'Ver enlaces preasignados para los 4 dispositivos',
+            child: IconButton(
+              icon: const Icon(Icons.hub_outlined, color: Color(0xFF818CF8)),
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => PreassignedUrlsDialog(appState: appState),
+                );
+              },
             ),
-            const Tab(
-              icon: Icon(Icons.assignment_outlined, size: 18),
-              text: 'Casos y Reportes',
-            ),
-            Tab(
+          ),
+
+          // Test Matrix Button (Exclusive to Admin/Agente)
+          Tooltip(
+            message: currentRole.canAccessTestMatrix
+                ? 'Abrir Matriz de Pruebas (TC01-TC08)'
+                : 'Matriz de Pruebas (Sólo Admin/Agente)',
+            child: IconButton(
               icon: Icon(
-                currentRole.canAccessTestMatrix ? Icons.verified_outlined : Icons.lock_outline,
-                size: 18,
+                currentRole.canAccessTestMatrix ? Icons.fact_check_rounded : Icons.lock_outline_rounded,
+                color: currentRole.canAccessTestMatrix ? const Color(0xFF10B981) : Colors.grey.shade600,
               ),
-              text: currentRole.canAccessTestMatrix
-                  ? 'Matriz de Pruebas (TC01-TC08)'
-                  : 'Matriz (Sólo Admin/Agente)',
+              onPressed: () => _openTestMatrixDialog(context, currentRole),
             ),
-          ],
-        ),
+          ),
+
+          const SizedBox(width: 6),
+        ],
       ),
       body: Column(
         children: [
@@ -347,16 +406,121 @@ class _HomeScaffoldState extends State<HomeScaffold> with SingleTickerProviderSt
               ),
             ),
 
-          // Main Tabs
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: const [
-                ChatView(),
-                TicketsView(),
-                TestMatrixView(),
-              ],
+          // Mobile Segmented Switcher (Visible on mobile/narrow screens)
+          if (!isWideScreen)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: const Color(0xFF0F172A),
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF334155)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => setState(() => _mobileSelectedIndex = 0),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            color: _mobileSelectedIndex == 0 ? currentRole.primaryColor : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.forum_rounded,
+                                size: 16,
+                                color: _mobileSelectedIndex == 0 ? Colors.white : const Color(0xFF94A3B8),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Mensajería y Archivos',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: _mobileSelectedIndex == 0 ? Colors.white : const Color(0xFF94A3B8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => setState(() => _mobileSelectedIndex = 1),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          decoration: BoxDecoration(
+                            color: _mobileSelectedIndex == 1 ? const Color(0xFF10B981) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.assignment_rounded,
+                                size: 16,
+                                color: _mobileSelectedIndex == 1 ? Colors.white : const Color(0xFF94A3B8),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Casos ($allReportsCount)',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: _mobileSelectedIndex == 1 ? Colors.white : const Color(0xFF94A3B8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
+
+          // Main Workspace: Split on Desktop/Tablet, Segmented on Mobile
+          Expanded(
+            child: isWideScreen
+                ? Row(
+                    children: [
+                      // Left Column: Chat & Messaging
+                      const Expanded(
+                        flex: 6,
+                        child: ChatView(),
+                      ),
+
+                      // Elegant Vertical Divider
+                      Container(
+                        width: 1.5,
+                        color: const Color(0xFF1E293B),
+                      ),
+
+                      // Right Column: User-authored Incidents & Cases
+                      const Expanded(
+                        flex: 4,
+                        child: TicketsView(),
+                      ),
+                    ],
+                  )
+                : IndexedStack(
+                    index: _mobileSelectedIndex,
+                    children: const [
+                      ChatView(),
+                      TicketsView(),
+                    ],
+                  ),
           ),
         ],
       ),

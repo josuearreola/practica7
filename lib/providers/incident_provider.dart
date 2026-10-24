@@ -37,12 +37,7 @@ class IncidentProvider extends ChangeNotifier {
 
     // 1. Load local persistence
     final loaded = await PersistenceService.loadReports();
-    if (loaded.isEmpty) {
-      _reports.addAll(MockData.getInitialReports());
-      await PersistenceService.saveReports(_reports);
-    } else {
-      _reports.addAll(loaded);
-    }
+    _reports.addAll(loaded);
 
     _isLoading = false;
     notifyListeners();
@@ -261,6 +256,47 @@ class IncidentProvider extends ChangeNotifier {
     return IncidentOperationResult(
       success: true,
       message: 'Prioridad actualizada exitosamente.',
+      report: updated,
+    );
+  }
+
+  Future<IncidentOperationResult> updateReportPriority(String reportId, IncidentPriority newPriority, {bool isOfflineSimulated = false}) {
+    return updatePriority(reportId, newPriority, isOfflineSimulated: isOfflineSimulated);
+  }
+
+  Future<IncidentOperationResult> updateReportStatus(String reportId, IncidentStatus newStatus) async {
+    final index = _reports.indexWhere((r) => r.id.toUpperCase() == reportId.toUpperCase());
+    if (index == -1) {
+      return IncidentOperationResult(
+        success: false,
+        message: 'Reporte no encontrado.',
+      );
+    }
+
+    final oldReport = _reports[index];
+    final updated = oldReport.copyWith(
+      status: newStatus,
+      updatedAt: DateTime.now(),
+    );
+
+    _reports[index] = updated;
+    await PersistenceService.saveReports(_reports);
+
+    _lastOperationMessage = 'Estado de ${updated.id} cambiado a ${newStatus.displayName}.';
+    await SyncService.broadcast(
+      SyncEventType.ticketUpdated,
+      sender: 'system',
+      payload: updated.id,
+    );
+
+    // Sync to Render
+    RenderService.postReport(updated.toJson());
+
+    notifyListeners();
+
+    return IncidentOperationResult(
+      success: true,
+      message: 'Estado actualizado a ${newStatus.displayName}.',
       report: updated,
     );
   }

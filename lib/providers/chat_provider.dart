@@ -39,12 +39,7 @@ class ChatProvider extends ChangeNotifier {
 
     // 1. Load local persistence
     final loaded = await PersistenceService.loadMessages();
-    if (loaded.isEmpty) {
-      _messages.addAll(MockData.getInitialMessages());
-      await PersistenceService.saveMessages(_messages);
-    } else {
-      _messages.addAll(loaded);
-    }
+    _messages.addAll(loaded);
 
     _isLoading = false;
     notifyListeners();
